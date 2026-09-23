@@ -1,0 +1,58 @@
+name: Docker Exercises CI
+
+# Chỉ chạy khi có thay đổi trong thư mục exercises/
+on:
+  push:
+    paths:
+      - 'exercises/**'
+  pull_request:
+    paths:
+      - 'exercises/**'
+
+jobs:
+  verify-all-exercises:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Chạy verify.sh cho từng bài tập
+        run: |
+          set +e
+          FAILED=0
+
+          for dir in exercises/*/; do
+            dir=${dir%/}
+            name=$(basename "$dir")
+
+            if [ -f "$dir/verify.sh" ]; then
+              echo "::group::🔍 Đang kiểm tra: $name"
+              chmod +x "$dir/verify.sh"
+
+              (cd "$dir" && bash "./verify.sh")
+              status=$?
+
+              if [ $status -eq 0 ]; then
+                echo "✅ $name: PASS"
+              else
+                echo "❌ $name: FAIL"
+                FAILED=1
+              fi
+              echo "::endgroup::"
+            fi
+          done
+
+          # Dọn dẹp container/image rác sau khi test để tránh đầy disk runner
+          docker system prune -af --volumes > /dev/null 2>&1 || true
+
+          if [ $FAILED -eq 1 ]; then
+            echo ""
+            echo "Có ít nhất 1 bài tập chưa đúng. Cuộn lên xem group nào có FAIL."
+            exit 1
+          else
+            echo ""
+            echo "Tất cả bài tập đã có verify.sh đều PASS!"
+          fi
